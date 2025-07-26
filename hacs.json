@@ -1,9 +1,6 @@
 {
   "name": "Juice Booster EV Charger",
   "content_in_root": false,
-  "domains": ["juice_booster"],
   "country": "DE",
-  "homeassistant": "2024.1.0",
-  "iot_class": "cloud_polling",
-  "render_readme": true
+  "homeassistant": "2024.1.0"
 }
