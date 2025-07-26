@@ -2,9 +2,9 @@
   "domain": "juice_booster",
   "name": "Juice Booster EV Charger",
   "version": "1.0.0",
-  "documentation": "https://example.com",
+  "documentation": "https://github.com/class142/hass-juice-plus-pilot",
   "requirements": [],
-  "codeowners": ["@your_github_handle"],
+  "codeowners": ["@class142"],
   "config_flow": true,
   "iot_class": "cloud_polling"
 }
