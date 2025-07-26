@@ -1,0 +1,95 @@
+
+alias: Smart EV Charging with PV, Battery and Forecast
+description: Dynamically adjusts Juice Booster charging current.
+trigger:
+  - platform: state
+    entity_id:
+      - sensor.inverter_pv_power
+      - sensor.inverter_battery
+      - binary_sensor.skoda_elroq_ladekabel
+    for:
+      minutes: 1
+condition:
+  - condition: state
+    entity_id: binary_sensor.skoda_elroq_ladekabel
+    state: "true"
+  - condition: template
+    value_template: >
+      {{ states('sensor.skoda_elroq_batteriestand') | float < states('sensor.skoda_elroq_ladegrenze_in_prozent') | float }}
+variables:
+  pv_power: "{{ states('sensor.inverter_pv_power') | float(0) }}"
+  battery_soc: "{{ states('sensor.inverter_battery') | float(0) }}"
+  ev_soc: "{{ states('sensor.skoda_elroq_batteriestand') | float(0) }}"
+
+  forecast_kw: "{{ states('sensor.solcast_pv_forecast_leistung_in_30_minuten') | float(0) }}"
+  battery_charging_limit_kw: 5.8
+  house_kw: "{{ states('sensor.inverter_power') | float(0) }}"
+  usable_kw: "{{ [forecast_kw, battery_charging_limit_kw] | min }}"
+  surplus_kw: "{{ usable_kw - house_kw }}"
+
+  battery_capacity_kwh: "{{ states('sensor.inverter_battery_capacity') | float(0) }}"
+  battery_reserve: "{{ battery_capacity_kwh * 0.1 }}"
+  ev_capacity_kwh: 55
+  avg_night_load_kw: 0.5
+  next_sunrise: " {{ state('sensor.sun_next_rising') }}"
+  next_sunrise_ts: "{{ as_timestamp(next_sunrise) }}"
+  next_sunset: "{{ state('sensor.sun_next_setting') }}"
+  next_sunset_ts: "{{ as_timestamp(next_sunset) }}"
+  night_hours: "{{ (next_sunrise_ts - next_sunset_ts) / 3600 }}"
+  reserve_kwh: "{{ avg_night_load_kw * night_hours + battery_reserve }}"
+  battery_kwh_available: "{{ battery_capacity_kwh * (battery_soc / 100) }}"
+action:
+  - choose:
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.inverter_battery
+            above: 85
+          - condition: template
+            value_template: "{{ surplus > 11500 }}"
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: select.juice_booster_charging_current
+            data:
+              option: "16"
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.inverter_battery
+            above: 60
+          - condition: template
+            value_template: "{{ surplus > 7000 }}"
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: select.juice_booster_charging_current
+            data:
+              option: "10"
+      - conditions:
+          - condition: template
+            value_template: "{{ battery_kwh_available | float < reserve_kwh | float }}"
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: select.juice_booster_charging_current
+            data:
+              option: "0"
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set now = now().timestamp() %}
+              {{ now > next_sunset or now < next_sunrise }}
+          - condition: numeric_state
+            entity_id: sensor.skoda_elroq_batteriestand
+            below: 70
+          - condition: template
+            value_template: "{{ battery_kwh_available | float >= reserve_kwh | float }}"
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: select.juice_booster_charging_current
+            data:
+              option: "6"
+  - service: homeassistant.update_entity
+    target:
+      entity_id: select.juice_booster_charging_current
+mode: single
