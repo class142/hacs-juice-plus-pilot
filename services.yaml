@@ -1,0 +1,12 @@
+set_charging_current:
+  description: Set charging current for Juice Booster
+  fields:
+    amperes:
+      description: Charging amperes
+      example: 10
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 16
+          step: 1
