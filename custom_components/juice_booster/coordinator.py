@@ -28,6 +28,16 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
             "client_id": "native-webview",
             "refresh_token": self.refresh_token
         }, ssl=False) as response:
+            if response.status != 200:
+                try:
+                    error_json = await response.json()
+                    error_description = error_json.get("error_description", "")
+                    _LOGGER.error("Token refresh failed: %s", error_description)
+                    raise Exception(f"Token refresh failed: {error_description}")
+                except Exception:
+                    text = await response.text()
+                    raise Exception(f"Token refresh failed with status {response.status}: {text}")
+            
             response.raise_for_status()
             tokens = await response.json()
             self.access_token = tokens["access_token"]
