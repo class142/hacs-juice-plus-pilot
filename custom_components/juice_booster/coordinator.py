@@ -1,7 +1,9 @@
 from datetime import timedelta
 import logging
+import time
 import jwt
 import aiohttp
+from homeassistant import config_entries
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.core import HomeAssistant
 
@@ -11,6 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class JuiceBoosterCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, config_entry):
+        self.config_entry = config_entry
         self.hass = hass
         self.username = config_entry.data["username"]
         self.password = config_entry.data["password"]
@@ -36,12 +39,37 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Token: %s", self.refresh_token)
                     raise Exception(f"Token refresh failed: {error_description}")
                 except Exception:
+                    _LOGGER.exception("Error during token refresh")
                     text = await response.text()
                     raise Exception(f"Token refresh failed with status {response.status}: {text}")
             
             response.raise_for_status()
             tokens = await response.json()
             self.access_token = tokens["access_token"]
+
+            if not self.access_token:
+                _LOGGER.error("Access token is empty, re-authenticating")
+                await self.re_authenticate()
+                return
+
+            if not tokens["refresh_token"]:
+                _LOGGER.error("Refresh token is empty, re-authenticating")
+                await self.re_authenticate()
+                return
+
+            try:
+                payload = jwt.decode(self.access_token, options={"verify_signature": False})
+                # Check if the token is expired
+                # The 'exp' claim represents the expiration time in seconds since the epoch
+                if payload.get("exp") < time.time():
+                    _LOGGER.warning("Access token is expired, re-authenticating")
+                    await self.re_authenticate()
+                    return
+            except jwt.ExpiredSignatureError:
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data={**self.config_entry.data, "access_token": self.access_token, "refresh_token": self.refresh_token},
+                )
             self.refresh_token = tokens["refresh_token"]
 
     def get_headers(self):
@@ -66,6 +94,25 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
             charging_info = await response.json()
             _LOGGER.debug("fetched charging info: %s", charging_info)
             return charging_info
+
+    async def re_authenticate(self):
+        """Re-authenticate using the config flow."""
+        _LOGGER.info("Re-authenticating via config flow")
+        
+        # Import the config flow
+        from custom_components.juice_booster import config_flow
+
+        # Initiate a new authentication
+        try:
+            flow = config_flow.JuiceBoosterConfigFlow()
+            token_data = await self.hass.async_add_executor_job(flow.authenticate, {"username": self.username, "password": self.password})
+            self.access_token = token_data["access_token"]
+            self.refresh_token = token_data["refresh_token"]
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data={**self.config_entry.data, "access_token": self.access_token, "refresh_token": self.refresh_token}
+            )
+        except Exception as e:
+            _LOGGER.error("Re-authentication failed: %s", e)
 
     async def _async_update_data(self):
         """Fetch the latest charging view from the Juice Booster API."""
