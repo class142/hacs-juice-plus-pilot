@@ -33,6 +33,7 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
                     error_json = await response.json()
                     error_description = error_json.get("error_description", "")
                     _LOGGER.error("Token refresh failed: %s", error_description)
+                    _LOGGER.debug("Token: %s", self.refresh_token)
                     raise Exception(f"Token refresh failed: {error_description}")
                 except Exception:
                     text = await response.text()
