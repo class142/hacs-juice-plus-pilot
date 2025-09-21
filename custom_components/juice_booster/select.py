@@ -20,6 +20,7 @@ class JuiceBoosterAmperageSelector(SelectEntity):
         self.hass = hass
         self._attr_options = [str(a) for a in AMPERAGE_OPTIONS]
         self._attr_name = "Juice Booster Charging Current"
+        self._attr_unique_id = f"juice_booster_charging_current_{device_id}"
 
     @property
     def current_option(self):
