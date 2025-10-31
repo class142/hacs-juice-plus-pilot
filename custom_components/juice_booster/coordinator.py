@@ -56,24 +56,29 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Refresh token is empty, re-authenticating")
                 await self.re_authenticate()
                 return
-
-            try:
-                payload = jwt.decode(self.access_token, options={"verify_signature": False})
-                # Check if the token is expired
-                # The 'exp' claim represents the expiration time in seconds since the epoch
-                if payload.get("exp") < time.time():
-                    _LOGGER.warning("Access token is expired, re-authenticating")
-                    await self.re_authenticate()
-                    return
-            except jwt.ExpiredSignatureError:
-                self.hass.config_entries.async_update_entry(
-                    self.config_entry,
-                    data={**self.config_entry.data, "access_token": self.access_token, "refresh_token": self.refresh_token},
-                )
+            
             self.refresh_token = tokens["refresh_token"]
 
     def get_headers(self):
         return {"Authorization": f"Bearer {self.access_token}"}
+    
+    def token_expired(self, token):
+        payload = jwt.decode(token, options={"verify_signature": False})
+        if payload.get("exp") < time.time():
+            return True
+        else:
+            return False
+    
+    async def check_tokens(self):
+        if self.token_expired(self.access_token):
+            if self.token_expired(self.refresh_token):
+                _LOGGER.info("Refresh token is expired, re-authenticating")
+                await self.re_authenticate(self)
+            else:
+                _LOGGER.info("Access token is expired, refreshing token")
+                await self.refresh_access_token(self)
+        else:
+            _LOGGER.info("Access token is still valid")
 
     async def get_device_id(self):
         """Fetch user info and extract device ID."""
@@ -117,7 +122,7 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch the latest charging view from the Juice Booster API."""
         try:
-            await self.refresh_access_token()
+            await self.check_tokens()
             device_id = await self.get_device_id()
             status = await self.get_charging_status(device_id)
             return status
