@@ -45,18 +45,7 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
             
             response.raise_for_status()
             tokens = await response.json()
-            self.access_token = tokens["access_token"]
-
-            if not self.access_token:
-                _LOGGER.error("Access token is empty, re-authenticating")
-                await self.re_authenticate()
-                return
-
-            if not tokens["refresh_token"]:
-                _LOGGER.error("Refresh token is empty, re-authenticating")
-                await self.re_authenticate()
-                return
-            
+            self.access_token = tokens["access_token"]           
             self.refresh_token = tokens["refresh_token"]
 
     def get_headers(self):
@@ -73,10 +62,10 @@ class JuiceBoosterCoordinator(DataUpdateCoordinator):
         if self.token_expired(self.access_token):
             if self.token_expired(self.refresh_token):
                 _LOGGER.info("Refresh token is expired, re-authenticating")
-                await self.re_authenticate(self)
+                await self.re_authenticate()
             else:
                 _LOGGER.info("Access token is expired, refreshing token")
-                await self.refresh_access_token(self)
+                await self.refresh_access_token()
         else:
             _LOGGER.info("Access token is still valid")
 
